@@ -4,7 +4,8 @@ import { createReservoir } from "./engine/reservoir.js";
 import { createFullReservoir } from "./engine/full-reservoir.js";
 import { createComposer, lastBars } from "./engine/composer.js";
 import { buildMidi, downloadBytes } from "./engine/midi-export.js";
-import { timbreMorphAt, TIMBRE_SCENES } from "./engine/timbre-morph.js";
+import { sampledPianoFocus, timbreMorphAt, TIMBRE_SCENES } from "./engine/timbre-morph.js";
+import { createProgressivePiano } from "./engine/sampled-piano.js";
 import NeuronFlight from "./engine/neuron-flight.jsx";
 import "./styles/music-on-fly.css";
 import "./styles/music-on-fly-full.css";
@@ -81,13 +82,15 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [cinematicStart, setCinematicStart] = useState(0);
+  const [timbreMode, setTimbreMode] = useState("cycle");
+  const [pianoStatus, setPianoStatus] = useState("Salamander Grand · 再生開始時に読込");
   const [timbreState, setTimbreState] = useState(() => timbreMorphAt(0));
   const [musicState, setMusicState] = useState({ cycle: 0, position: 0, address: Array(16).fill(null), cellName: "—", harmony: "—", texture: 2, phase: 0, deviation: { familiarity: 0, surprise: 0, interest: 0, drive: 0, ages: {} } });
   const runtime = useRef(null);
   const flightCanvas = useRef(null);
   const recordingRuntime = useRef(null);
   const controls = useRef({});
-  controls.current = { bpm, volume, density, variation, motifReturn };
+  controls.current = { bpm, volume, density, variation, motifReturn, timbreMode };
 
   const stop = () => {
     const activeRecorder = recordingRuntime.current?.recorder;
@@ -98,8 +101,8 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
     rt.stopWorker?.();
     rt.fullReservoir?.terminate();
     const allInstruments = rt.instrumentBanks?.flatMap((bank) => Object.values(bank)) || [];
-    try { rt.master.gain.rampTo(0, 0.12); allInstruments.forEach((instrument) => instrument.releaseAll?.()); } catch { /* already disposed */ }
-    setTimeout(() => { try { allInstruments.forEach((instrument) => instrument.dispose()); rt.sceneBuses?.forEach((bus) => bus.dispose()); rt.filter.dispose(); rt.reverb.dispose(); rt.compressor.dispose(); rt.master.dispose(); rt.limiter.dispose(); } catch { /* no-op */ } }, 180);
+    try { rt.master.gain.rampTo(0, 0.12); allInstruments.forEach((instrument) => instrument.releaseAll?.()); rt.pianoRuntime?.releaseAll(); } catch { /* already disposed */ }
+    setTimeout(() => { try { allInstruments.forEach((instrument) => instrument.dispose()); rt.pianoRuntime?.dispose(); rt.sceneBuses?.forEach((bus) => bus.dispose()); rt.filter.dispose(); rt.reverb.dispose(); rt.compressor.dispose(); rt.master.dispose(); rt.limiter.dispose(); } catch { /* no-op */ } }, 180);
     runtime.current = null; setRunning(false); setStatus("停止中");
   };
   useEffect(() => () => stop(), []);
@@ -127,9 +130,11 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
       const compressor = new Tone.Compressor({ threshold: -26, ratio: 2.4, attack: 0.18, release: 0.85, knee: 14 }).connect(master);
       const reverb = new Tone.Reverb({ decay: 5.8, wet: 0.29 }).connect(compressor);
       const filter = new Tone.Filter(3600, "lowpass").connect(reverb);
-      const initialMorph = timbreMorphAt(0);
+      const initialMorph = timbreMode === "piano" ? sampledPianoFocus() : timbreMorphAt(0);
       const sceneBuses = TIMBRE_SCENES.map((_, index) => new Tone.Gain(initialMorph.weights[index]).connect(filter));
-      const instrumentBanks = TIMBRE_SCENES.map((scene, index) => createTimbreBank(scene.id, sceneBuses[index]));
+      const instrumentBanks = TIMBRE_SCENES.filter((scene) => scene.id !== "piano").map((scene) => createTimbreBank(scene.id, sceneBuses[TIMBRE_SCENES.indexOf(scene)]));
+      const pianoIndex = TIMBRE_SCENES.findIndex((scene) => scene.id === "piano");
+      const pianoRuntime = createProgressivePiano({ output: sceneBuses[pianoIndex], localBaseUrl: config.sampleBaseUrl || `${import.meta.env.BASE_URL}salamander/`, onStatus: setPianoStatus });
       let nextTime = Tone.now() + 0.12, step = 0, feedback = 0, lastPaint = 0, morphBias = 0;
       let queue = [], batchPending = false, stopped = false;
       const requestBatch = () => {
@@ -153,7 +158,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
           if (!readout) { requestBatch(); break; }
           const frame = composer.next(readout, c);
           morphBias += ((readout.groups[3] || 0) - morphBias) * 0.035;
-          const morph = timbreMorphAt(step, morphBias);
+          const morph = c.timbreMode === "piano" ? sampledPianoFocus() : timbreMorphAt(step, morphBias);
           sceneBuses.forEach((bus, index) => bus.gain.rampTo(morph.weights[index], 2.4));
           filter.frequency.rampTo(morph.cutoff, 3.5); reverb.wet.rampTo(morph.reverb, 3.5);
           const signalTime = performance.now();
@@ -162,6 +167,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
             const role = event.role === "echo" ? "motif" : event.role;
             event.timbre = { from: TIMBRE_SCENES[morph.from].id, to: TIMBRE_SCENES[morph.to].id, mix: +morph.mix.toFixed(4) };
             instrumentBanks.forEach((bank) => (bank[role] || bank.motif).triggerAttackRelease(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity));
+            pianoRuntime.trigger(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity);
           }
           const lead = frame.events.find((event) => event.role === "motif") || frame.events[0];
           if (frame.events.length) setVisualSignals((previous) => [...previous.filter((signal) => signal.time > signalTime - 3500), ...frame.events.filter((event) => event.neuronIndex >= 0).map((event) => ({ ...event, time: signalTime + (event.offset || 0) * 60000 / c.bpm }))].slice(-32));
@@ -180,7 +186,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
         requestBatch();
       };
       const timer = setInterval(schedule, 40);
-      runtime.current = { reservoir, fullReservoir, fullMetadata, composer, instrumentBanks, sceneBuses, filter, reverb, compressor, master, limiter, recordingDestination, timer, stopWorker: () => { stopped = true; } };
+      runtime.current = { reservoir, fullReservoir, fullMetadata, composer, instrumentBanks, pianoRuntime, sceneBuses, filter, reverb, compressor, master, limiter, recordingDestination, timer, stopWorker: () => { stopped = true; } };
       requestBatch(); schedule(); setRunning(true); setAudioState(Tone.context.state);
       setStatus(`演奏中 · Take ${performanceTake.toString(36).toUpperCase()} · ${scope === "full" ? `${fullMetadata.nodeCount.toLocaleString()}ニューロン` : `${graph.nodes.length.toLocaleString()}ニューロン`} · AudioContext ${Tone.context.state}`);
     } catch (error) { stop(); setStatus(`開始失敗: ${error.message}`); }
@@ -229,7 +235,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
     const base = `${config.fileSlug}-${Date.now()}`;
     downloadBytes(buildMidi(recent, bpm), `${base}.mid`, "audio/midi");
     const dataInfo = scope === "full" ? config.fullManifest : manifest;
-    saveJson({ format: "music-on-the-fly-session", version: 2, engineVersion: "3.3.0", instrument: config.id, createdAt: new Date().toISOString(), preset: config.preset, meter: "3/4", bpm, key: "C major / A minor", seed, takeSeed: runtime.current?.composer.getState().takeSeed ?? takeSeed, mode: mode === "flywire" ? config.id : mode, scope, flyAddress: runtime.current?.composer.getState().address || musicState.address, musicalState: runtime.current?.composer.getState() || musicState, timbreMorph: timbreState, controls: { density, variation, motifReturn }, graphSha256: dataInfo.binary_sha256 || dataInfo.graph_sha256 || graph.graph_sha256, weightTransform: dataInfo.weight_transform, neuronCount: scope === "full" ? config.fullManifest.neuron_count : graph.nodes.length, directedEdgeCount: scope === "full" ? config.fullManifest.directed_edge_count : graph.edges.length, model: { alpha: 0.2, gain: mode === "no-recurrence" ? 0 : 0.9 }, randomState: runtime.current ? { reservoir: runtime.current.reservoir?.randomState() || null, composer: runtime.current.composer.randomState() } : null, events: recent }, `${base}.json`);
+    saveJson({ format: "music-on-the-fly-session", version: 2, engineVersion: "3.4.0", instrument: config.id, createdAt: new Date().toISOString(), preset: config.preset, meter: "3/4", bpm, key: "C major / A minor", seed, takeSeed: runtime.current?.composer.getState().takeSeed ?? takeSeed, mode: mode === "flywire" ? config.id : mode, scope, flyAddress: runtime.current?.composer.getState().address || musicState.address, musicalState: runtime.current?.composer.getState() || musicState, timbreMorph: timbreState, sampledPiano: pianoStatus, controls: { density, variation, motifReturn, timbreMode }, graphSha256: dataInfo.binary_sha256 || dataInfo.graph_sha256 || graph.graph_sha256, weightTransform: dataInfo.weight_transform, neuronCount: scope === "full" ? config.fullManifest.neuron_count : graph.nodes.length, directedEdgeCount: scope === "full" ? config.fullManifest.directed_edge_count : graph.edges.length, model: { alpha: 0.2, gain: mode === "no-recurrence" ? 0 : 0.9 }, randomState: runtime.current ? { reservoir: runtime.current.reservoir?.randomState() || null, composer: runtime.current.composer.randomState() } : null, events: recent }, `${base}.json`);
     setStatus(`直近${Math.min(8, Math.ceil((recent.at(-1)?.absoluteBeat || 0) / 4 + 1))}小節を保存しました`);
   };
 
@@ -279,6 +285,9 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
         <label>飛行速度 <output>{flightSpeed.toFixed(1)}×</output><input type="range" min="0.25" max="3" step="0.05" value={flightSpeed} onChange={(e) => setFlightSpeed(+e.target.value)} /></label>
         <div className="mof-row"><label>Tempo<input type="number" min="48" max="96" value={bpm} onChange={(e) => setBpm(Math.max(48, Math.min(96, +e.target.value || 62)))} /></label><label>Seed<input type="number" value={seed} disabled={running} onChange={(e) => setSeed(+e.target.value || 1)} /></label></div>
         <div className="mof-take"><span>TAKE <b>{takeSeed.toString(36).toUpperCase()}</b></span><button className={takeLocked ? "selected" : ""} onClick={() => setTakeLocked((value) => !value)}>{takeLocked ? "🔒 次回も固定" : "♻ 再生ごとに更新"}</button><button disabled={running} onClick={() => setTakeSeed(freshTakeSeed())}>新しい導入</button></div>
+        <h2>音源</h2>
+        <div className="mof-segments"><button className={timbreMode === "cycle" ? "selected" : ""} onClick={() => setTimbreMode("cycle")}>4音源モーフ</button><button className={timbreMode === "piano" ? "selected" : ""} onClick={() => setTimbreMode("piano")}>サンプリングピアノ</button></div>
+        <p className="mof-scope"><strong>{pianoStatus}</strong><br />Feltから実ピアノへ無音を挟まずクロスフェードします。</p>
         <div className="mof-deviation"><span>親密度 <b>{Math.round((musicState.deviation?.familiarity || 0) * 100)}</b></span><span>驚き <b>{Math.round((musicState.deviation?.surprise || 0) * 100)}</b></span><span>変化圧 <b>{Math.round((musicState.deviation?.drive || 0) * 100)}</b></span></div>
         <h2>回路比較</h2>
         <div className="mof-segments">{MODES.map(([value, label]) => <button key={value} disabled={running} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setEvents([]); }}>{value === "flywire" ? config.sourceLabel : label}</button>)}</div>

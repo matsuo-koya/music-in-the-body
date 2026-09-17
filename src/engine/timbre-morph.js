@@ -2,6 +2,7 @@ export const TIMBRE_SCENES = [
   { id: "felt", label: "Felt", cutoff: 2700, reverb: 0.24 },
   { id: "glass", label: "Glass", cutoff: 6800, reverb: 0.38 },
   { id: "air", label: "Air", cutoff: 4100, reverb: 0.56 },
+  { id: "piano", label: "Salamander Piano", cutoff: 5200, reverb: 0.34 },
 ];
 
 /**
@@ -28,4 +29,12 @@ export function timbreMorphAt(step, neuralBias = 0) {
     cutoff: a.cutoff + (b.cutoff - a.cutoff) * mix,
     reverb: a.reverb + (b.reverb - a.reverb) * mix,
   };
+}
+
+export function sampledPianoFocus() {
+  const weights = TIMBRE_SCENES.map((scene) => scene.id === "piano" ? 1 : 0.035);
+  const power = Math.sqrt(weights.reduce((sum, weight) => sum + weight * weight, 0));
+  for (let index = 0; index < weights.length; index += 1) weights[index] /= power;
+  const piano = TIMBRE_SCENES.findIndex((scene) => scene.id === "piano");
+  return { from: piano, to: piano, mix: 1, weights, label: "Salamander Grand Piano", cutoff: 5200, reverb: 0.34 };
 }

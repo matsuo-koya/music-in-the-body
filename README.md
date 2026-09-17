@@ -9,7 +9,9 @@ MaleCNS v1.0の実接続構造から、停止するまで演奏を続けるブ�
 - MaleCNS v1.0の163,997 endpoint bodiesと6,236,393 directed edgesをWeb Workerで演算
 - 3Dニューロン空間を一人称視点で飛行
 - 発音、モデル活動、接続上の光パルスを同期
-- Felt / Glass / Air音源間の連続モーフィング
+- Felt / Glass / Air / Salamander Grand Piano間の連続モーフィング
+- 無限サティ機関と同じ、中核10音を先に読み残り20音を演奏中に追加するサンプル読込
+- 4音源モーフとサンプリングピアノ固定を演奏中に切り替え
 - 毎回変化し、seedを固定すると再現できる導入
 - 映像と最終音声ミックスのMP4録画
 - 直近8小節のMIDIと再現条件JSONを保存
@@ -30,4 +32,4 @@ The browser artifact retains connections with weight ≥ 5 and excludes self-con
 
 Measured data consists of wiring and connection weights. Network dynamics, external input, visual pulses, `body-pulse`, harmony, rhythm, and timbre mapping are artificial. They are not recordings of neural firing or behavior. Display positions are a deterministic performance layout, not anatomical coordinates. Current readout groups are deterministic body-ID partitions rather than anatomical brain/VNC classes.
 
-MaleCNS data is CC BY 4.0. See [ATTRIBUTION.md](ATTRIBUTION.md) and [DATA_LICENSE.md](DATA_LICENSE.md). No endorsement by MaleCNS, FlyEM, HHMI Janelia, or the dataset authors is implied.
+MaleCNS data is CC BY 4.0. Salamander Grand Piano V3 samples are by Alexander Holm and distributed under CC BY 3.0. See [ATTRIBUTION.md](ATTRIBUTION.md), [DATA_LICENSE.md](DATA_LICENSE.md), and `public/salamander/CREDITS.txt`. No endorsement by MaleCNS, FlyEM, HHMI Janelia, or the dataset authors is implied.

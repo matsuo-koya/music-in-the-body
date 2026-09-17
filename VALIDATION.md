@@ -13,4 +13,6 @@ npm test
 npm run build
 ```
 
-Automated checks verify deterministic finite dynamics, bounded history, MIDI generation, timbre morph continuity, take-seed reproducibility, the sensorimotor music profile, and the full CSR artifact hash.
+Automated checks verify deterministic finite dynamics, bounded history, MIDI generation, four-source timbre morph continuity, sampled-piano focus, take-seed reproducibility, the sensorimotor music profile, and the full CSR artifact hash.
+
+Browser verification loaded all 30 bundled Salamander samples, reported CC BY 3.0 attribution in the UI, played the 163,997-body graph with `AudioContext running`, and switched from fixed sampled piano to the four-source morph while note generation continued without warnings or errors.

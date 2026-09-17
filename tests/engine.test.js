@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createReservoir } from "../src/engine/reservoir.js";
 import { createComposer, lastBars } from "../src/engine/composer.js";
 import { buildMidi } from "../src/engine/midi-export.js";
-import { timbreMorphAt } from "../src/engine/timbre-morph.js";
+import { sampledPianoFocus, timbreMorphAt } from "../src/engine/timbre-morph.js";
 
 const graph = { nodes: ["1", "2", "3"], edges: [
   { source: "1", target: "2", synapse_count: 4 },
@@ -56,7 +56,7 @@ test("Fly Dice emits a layered 3/4 ensemble and a reproducible 16-cell address",
 
 test("timbre morph is continuous, equal-power, and cyclic", () => {
   let previous = timbreMorphAt(0);
-  for (let step = 1; step <= 144; step += 1) {
+  for (let step = 1; step <= 192; step += 1) {
     const current = timbreMorphAt(step);
     assert.ok(Math.abs(current.weights.reduce((sum, weight) => sum + weight * weight, 0) - 1) < 1e-10);
     assert.ok(current.weights.every((weight) => weight > 0));
@@ -64,9 +64,17 @@ test("timbre morph is continuous, equal-power, and cyclic", () => {
     assert.ok(Number.isFinite(current.cutoff) && current.reverb >= 0 && current.reverb <= 1);
     previous = current;
   }
-  assert.deepEqual(timbreMorphAt(0).weights, timbreMorphAt(144).weights);
+  assert.deepEqual(timbreMorphAt(0).weights, timbreMorphAt(192).weights);
   const boundaryBefore = timbreMorphAt(47.999), boundaryAfter = timbreMorphAt(48.001);
   assert.ok(Math.max(...boundaryBefore.weights.map((weight, index) => Math.abs(weight - boundaryAfter.weights[index]))) < 0.001);
+});
+
+test("sampled piano focus keeps all banks alive while selecting Salamander", () => {
+  const focus = sampledPianoFocus();
+  assert.equal(focus.label, "Salamander Grand Piano");
+  assert.ok(focus.weights.every((weight) => weight > 0));
+  assert.ok(focus.weights[3] > 0.99);
+  assert.ok(Math.abs(focus.weights.reduce((sum, weight) => sum + weight * weight, 0) - 1) < 1e-10);
 });
 
 test("take seeds vary the opening while remaining reproducible", () => {

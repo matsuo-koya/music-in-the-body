@@ -8,3 +8,5 @@ The generated files retain provenance and modification details in:
 - `data/processed/data_manifest.json`
 
 Application source code licensing is separate from the data license.
+
+The files in `public/salamander/` are Salamander Grand Piano V3 samples by Alexander Holm, licensed under CC BY 3.0. Their required attribution is retained in `public/salamander/CREDITS.txt`.

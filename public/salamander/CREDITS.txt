@@ -1,0 +1,11 @@
+Salamander Grand Piano — V3
+Yamaha C5, 48kHz 24bit の録音を Alexander Holm 氏が制作。
+ライセンス: Creative Commons Attribution 3.0 (CC-BY 3.0)
+https://archive.org/details/SalamanderGrandPianoV3
+
+ここに置いた mp3 は Tone.js プロジェクトが配布している変換版
+(https://tonejs.github.io/audio/salamander/) を取得したもの。
+1ベロシティ・レイヤー、3半音おきのサンプリング（A0 〜 C8 の30音）。
+
+再取得したい場合はリポジトリ直下で:
+  npm run fetch:salamander

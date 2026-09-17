@@ -1,0 +1,5 @@
+.mof-flight {
+  height: clamp(330px, 52vh, 570px);
+  cursor: crosshair;
+  touch-action: pan-y;
+}

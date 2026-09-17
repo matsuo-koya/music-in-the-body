@@ -1,0 +1,15 @@
+.mof-scope {
+  margin: 14px 0 0;
+  color: #779087;
+  font-size: 11px;
+}
+.mof-scope strong { color: #b9c9c2; }
+.mof-scope button {
+  display: block;
+  margin-top: 9px;
+  padding: 6px 9px;
+}
+.mof-record.active{color:#fff;background:#722e2a;border-color:#ed6a5e;box-shadow:0 0 18px rgba(237,106,94,.22)}
+.mof-record-note{margin:8px 3px 0;color:#607b72;font-size:9px;line-height:1.5}
+.mof-take{display:grid;grid-template-columns:1fr auto auto;gap:5px;align-items:center;margin-top:11px;padding:7px;background:#091512;border-radius:7px}.mof-take span{color:#6f8980;font:9px ui-monospace,monospace;letter-spacing:.12em}.mof-take b{display:block;color:#e2bd70;font-size:13px;margin-top:2px}.mof-take button{padding:7px 8px;font-size:9px}.mof-take button.selected{background:#b6c992;color:#172119;border-color:#b6c992}
+.mof-score-state{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.mof-score-state>div{background:rgba(7,16,14,.78);border:1px solid #203a33;border-radius:8px;padding:10px 12px;min-width:0}.mof-score-state small{display:block;color:#607d73;font-size:8px;letter-spacing:.16em}.mof-score-state strong{display:block;color:#e9c270;font-family:Georgia,serif;font-size:clamp(14px,1.35vw,19px);font-weight:400;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mof-score-state span{color:#82988f;font-size:10px}.mof-address{display:flex;align-items:center;gap:5px;margin-top:9px;color:#657f76;font:9px ui-monospace,monospace;letter-spacing:.08em}.mof-address>span{margin-right:4px}.mof-address i{display:grid;place-items:center;width:18px;height:18px;border:1px solid #29453d;border-radius:50%;font-style:normal;color:#9cb0a8}.mof-address i.current{color:#182019;background:#e9b95d;border-color:#e9b95d;box-shadow:0 0 12px rgba(233,185,93,.35)}.mof-deviation{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:14px}.mof-deviation span{background:#091512;border-radius:6px;padding:7px;color:#6f8980;font-size:9px}.mof-deviation b{display:block;color:#bfcac6;font-size:12px;margin-top:2px}@media(max-width:900px){.mof-score-state{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.mof-score-state{grid-template-columns:1fr}.mof-address{gap:3px;overflow:hidden}.mof-address i{width:15px;height:15px;font-size:8px;flex:0 0 auto}}

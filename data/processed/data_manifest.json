@@ -1,0 +1,24 @@
+{
+  "dataset_name": "Janelia MaleCNS connectome connectivity",
+  "dataset_version": "1.0",
+  "source_page_url": "https://male-cns.janelia.org/download/",
+  "source_download_url": "https://storage.googleapis.com/flyem-male-cns/v1.0/connectome-data/flat-connectome/connectome-weights-male-cns-v1.0-minconf-0.5-significant-only.feather",
+  "source_file_name": "connectome-weights-male-cns-v1.0-minconf-0.5-significant-only.feather",
+  "source_size_bytes": 502169298,
+  "source_sha256": "5c536423a62a688e59e7b441f9c04d6272c9a1f017e35814cf561f8c275d9e9e",
+  "source_row_count": 25568639,
+  "minimum_synapse_weight": 5,
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "MaleCNS / FlyEM at HHMI Janelia; Berg et al. (2026)",
+  "built_at": "2026-09-17T01:04:49.939125+00:00",
+  "selection_method": "top weighted-degree candidates, largest SCC, degree clip, SCC recheck",
+  "selection_parameters": {
+    "target_nodes": 1000,
+    "candidate_nodes": 2500
+  },
+  "neuron_count": 991,
+  "directed_edge_count": 27142,
+  "synapse_count_sum": 1517633,
+  "weight_transform": "sqrt(weight), normalized by target incoming sum at runtime",
+  "graph_sha256": "451835bf71bc28410cba670d3b96b5def604ff5bac5ca517bc3138bcff8c077e"
+}

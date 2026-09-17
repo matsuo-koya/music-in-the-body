@@ -1,0 +1,11 @@
+.mcns-shell {
+  --mof-accent: #df785f;
+  --mof-cyan: #77d8d0;
+}
+
+.mcns-shell .mof-hero {
+  background: linear-gradient(112deg, rgba(117, 39, 29, .25), rgba(5, 25, 25, .72));
+}
+
+.mcns-shell .mof-kicker { color: #ef9b7f; }
+.mcns-shell .mof-play { border-color: #d87058; }

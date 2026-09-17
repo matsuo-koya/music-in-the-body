@@ -47,9 +47,11 @@ export default function NeuronFlight({ graph, activity, running, speed = 1, last
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas.getContext("2d", { alpha: false });
-    let frame = 0, previous = performance.now(), cameraZ = 0, lastCinematicStart = 0;
+    let frame = 0, previous = performance.now(), lastDraw = 0, cameraZ = 0, lastCinematicStart = 0;
 
     const draw = (now) => {
+      if (now - lastDraw < 1000 / 30) { frame = requestAnimationFrame(draw); return; }
+      lastDraw = now;
       const elapsed = Math.min(50, now - previous); previous = now;
       const state = live.current;
       if (state.cinematicStart && state.cinematicStart !== lastCinematicStart) { lastCinematicStart = state.cinematicStart; cameraZ = 0; }
@@ -58,7 +60,7 @@ export default function NeuronFlight({ graph, activity, running, speed = 1, last
       cameraZ = (cameraZ + elapsed * (state.running ? (0.025 + 0.155 * dive) * state.speed : 0.018)) % WORLD_DEPTH;
       look.current.x += (look.current.targetX - look.current.x) * 0.045;
       look.current.y += (look.current.targetY - look.current.y) * 0.045;
-      const dpr = Math.min(2, window.devicePixelRatio || 1), width = canvas.clientWidth || 700, height = canvas.clientHeight || 340;
+      const dpr = Math.min(state.recording ? 2 : 1.5, window.devicePixelRatio || 1), width = canvas.clientWidth || 700, height = canvas.clientHeight || 340;
       if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
         canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
       }

@@ -102,7 +102,12 @@ self.onmessage = async ({ data }) => {
       self.postMessage({ type: "ready", metadata });
     } else if (data.type === "batch") {
       const output = [];
-      for (let i = 0; i < data.count; i += 1) output.push(step(data.feedback || 0));
+      for (let i = 0; i < data.count; i += 1) {
+        output.push(step(data.feedback || 0));
+        // Break long graph traversals into short bursts. This lets the browser
+        // service audio, painting and recorder work between reservoir steps.
+        if ((i + 1) % 2 === 0 && i + 1 < data.count) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       const activity = Float32Array.from(sampleIndices, (index) => state[index]);
       self.postMessage({ type: "batch", output, activity }, [activity.buffer]);
     }

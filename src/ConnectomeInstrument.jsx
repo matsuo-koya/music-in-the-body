@@ -14,6 +14,7 @@ import "./styles/neuron-flight.css";
 const MODES = [
   ["flywire", "FlyWire"], ["rewired", "配線組み替え"], ["no-recurrence", "再帰接続なし"],
 ];
+const ACTIVE_TIMBRE_THRESHOLD = 0.055;
 const midiName = (m) => `${["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][m % 12]}${Math.floor(m / 12) - 1}`;
 
 function saveJson(value, name) {
@@ -76,6 +77,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
   const [status, setStatus] = useState("停止中");
   const [events, setEvents] = useState([]);
   const [metrics, setMetrics] = useState({ variance: 0, saturation: 0 });
+  const [engineHealth, setEngineHealth] = useState({ underruns: 0, batchMs: 0, queue: 0, level: 0 });
   const [activity, setActivity] = useState([]);
   const [lastVisualNote, setLastVisualNote] = useState(null);
   const [visualSignals, setVisualSignals] = useState([]);
@@ -98,11 +100,13 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
     const rt = runtime.current;
     if (!rt) return;
     clearInterval(rt.timer);
+    clearInterval(rt.monitorTimer);
+    rt.rawContext?.removeEventListener?.("statechange", rt.onAudioStateChange);
     rt.stopWorker?.();
     rt.fullReservoir?.terminate();
     const allInstruments = rt.instrumentBanks?.flatMap((bank) => Object.values(bank)) || [];
     try { rt.master.gain.rampTo(0, 0.12); allInstruments.forEach((instrument) => instrument.releaseAll?.()); rt.pianoRuntime?.releaseAll(); } catch { /* already disposed */ }
-    setTimeout(() => { try { allInstruments.forEach((instrument) => instrument.dispose()); rt.pianoRuntime?.dispose(); rt.sceneBuses?.forEach((bus) => bus.dispose()); rt.filter.dispose(); rt.reverb.dispose(); rt.compressor.dispose(); rt.master.dispose(); rt.limiter.dispose(); } catch { /* no-op */ } }, 180);
+    setTimeout(() => { try { allInstruments.forEach((instrument) => instrument.dispose()); rt.pianoRuntime?.dispose(); rt.sceneBuses?.forEach((bus) => bus.dispose()); rt.meter?.dispose(); rt.filter.dispose(); rt.reverb.dispose(); rt.compressor.dispose(); rt.master.dispose(); rt.limiter.dispose(); } catch { /* no-op */ } }, 180);
     runtime.current = null; setRunning(false); setStatus("停止中");
   };
   useEffect(() => () => stop(), []);
@@ -125,6 +129,8 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
       const composer = createComposer({ seed, takeSeed: performanceTake, density, variation, motifReturn, profile: config.profile });
       const limiter = new Tone.Limiter(-3).toDestination();
       const master = new Tone.Gain(volume).connect(limiter);
+      const meter = new Tone.Meter({ normalRange: true, smoothing: 0.82 });
+      master.connect(meter);
       const recordingDestination = Tone.getContext().createMediaStreamDestination();
       master.connect(recordingDestination);
       const compressor = new Tone.Compressor({ threshold: -26, ratio: 2.4, attack: 0.18, release: 0.85, knee: 14 }).connect(master);
@@ -136,13 +142,16 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
       const pianoIndex = TIMBRE_SCENES.findIndex((scene) => scene.id === "piano");
       const pianoRuntime = createProgressivePiano({ output: sceneBuses[pianoIndex], localBaseUrl: config.sampleBaseUrl || `${import.meta.env.BASE_URL}salamander/`, onStatus: setPianoStatus });
       let nextTime = Tone.now() + 0.12, step = 0, feedback = 0, lastPaint = 0, morphBias = 0;
-      let queue = [], batchPending = false, stopped = false;
+      let queue = [], batchPending = false, stopped = false, starving = false, hasReceivedBatch = false, underruns = 0, batchMs = 0;
       const requestBatch = () => {
-        if (!fullReservoir || batchPending || stopped || queue.length >= 8) return;
+        if (!fullReservoir || batchPending || stopped || queue.length >= 10) return;
         batchPending = true;
-        fullReservoir.batch(16, feedback).then(({ output, activity: sample }) => {
+        const batchStarted = performance.now();
+        fullReservoir.batch(8, feedback).then(({ output, activity: sample }) => {
           batchPending = false;
           if (stopped) return;
+          batchMs = performance.now() - batchStarted;
+          hasReceivedBatch = true;
           queue.push(...output); setActivity(Array.from(sample)); schedule(); requestBatch();
         }).catch((error) => {
           batchPending = false;
@@ -155,7 +164,11 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
         if (nextTime < Tone.now() - 0.25) nextTime = Tone.now() + 0.05;
         while (nextTime < Tone.now() + 0.35) {
           const readout = fullReservoir ? queue.shift() : reservoir.step({ phase: (step % 8) / 8, drift: Math.sin(step / 37), feedback });
-          if (!readout) { requestBatch(); break; }
+          if (!readout) {
+            if (!starving && hasReceivedBatch) { starving = true; underruns += 1; }
+            requestBatch(); break;
+          }
+          starving = false;
           const frame = composer.next(readout, c);
           morphBias += ((readout.groups[3] || 0) - morphBias) * 0.035;
           const morph = c.timbreMode === "piano" ? sampledPianoFocus() : timbreMorphAt(step, morphBias);
@@ -166,8 +179,10 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
             const when = nextTime + (event.offset || 0) * 60 / c.bpm;
             const role = event.role === "echo" ? "motif" : event.role;
             event.timbre = { from: TIMBRE_SCENES[morph.from].id, to: TIMBRE_SCENES[morph.to].id, mix: +morph.mix.toFixed(4) };
-            instrumentBanks.forEach((bank) => (bank[role] || bank.motif).triggerAttackRelease(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity));
-            pianoRuntime.trigger(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity);
+            instrumentBanks.forEach((bank, index) => {
+              if (morph.weights[index] >= ACTIVE_TIMBRE_THRESHOLD) (bank[role] || bank.motif).triggerAttackRelease(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity);
+            });
+            if (morph.weights[pianoIndex] >= ACTIVE_TIMBRE_THRESHOLD) pianoRuntime.trigger(Tone.Frequency(event.midi, "midi"), event.duration * 60 / c.bpm, when, event.velocity);
           }
           const lead = frame.events.find((event) => event.role === "motif") || frame.events[0];
           if (frame.events.length) setVisualSignals((previous) => [...previous.filter((signal) => signal.time > signalTime - 3500), ...frame.events.filter((event) => event.neuronIndex >= 0).map((event) => ({ ...event, time: signalTime + (event.offset || 0) * 60000 / c.bpm }))].slice(-32));
@@ -180,13 +195,24 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
             setMusicState(composer.getState());
             setTimbreState(morph);
             setMetrics({ variance: readout.variance, saturation: readout.saturation });
+            setEngineHealth({ underruns, batchMs, queue: queue.length, level: Number(meter.getValue()) || 0 });
             if (reservoir) setActivity(Array.from(reservoir.getState().slice(0, 800)));
           }
         }
         requestBatch();
       };
       const timer = setInterval(schedule, 40);
-      runtime.current = { reservoir, fullReservoir, fullMetadata, composer, instrumentBanks, pianoRuntime, sceneBuses, filter, reverb, compressor, master, limiter, recordingDestination, timer, stopWorker: () => { stopped = true; } };
+      const rawContext = Tone.getContext().rawContext;
+      const onAudioStateChange = () => {
+        setAudioState(rawContext.state);
+        if (runtime.current && rawContext.state !== "running") setStatus(`音声が${rawContext.state}になりました · 「音声再開」を押してください`);
+      };
+      rawContext.addEventListener?.("statechange", onAudioStateChange);
+      const monitorTimer = setInterval(() => {
+        setAudioState(rawContext.state);
+        setEngineHealth({ underruns, batchMs, queue: queue.length, level: Number(meter.getValue()) || 0 });
+      }, 750);
+      runtime.current = { reservoir, fullReservoir, fullMetadata, composer, instrumentBanks, pianoRuntime, sceneBuses, meter, filter, reverb, compressor, master, limiter, recordingDestination, timer, monitorTimer, rawContext, onAudioStateChange, stopWorker: () => { stopped = true; } };
       requestBatch(); schedule(); setRunning(true); setAudioState(Tone.context.state);
       setStatus(`演奏中 · Take ${performanceTake.toString(36).toUpperCase()} · ${scope === "full" ? `${fullMetadata.nodeCount.toLocaleString()}ニューロン` : `${graph.nodes.length.toLocaleString()}ニューロン`} · AudioContext ${Tone.context.state}`);
     } catch (error) { stop(); setStatus(`開始失敗: ${error.message}`); }
@@ -266,7 +292,7 @@ export default function ConnectomeInstrument({ active = true, instrument } = {})
           <button className={`mof-record ${recording ? "active" : ""}`} onClick={toggleRecording}>{recording ? `■ 録画停止・MP4保存 ${recordSeconds.toFixed(1)}s` : "● 映像＋音声をMP4録画"}</button>
         </div>
         <p className="mof-record-note">録画範囲はビジュアライザー映像と最終音声ミックスです。開始後7.2秒で全景からニューロン視点へ移行します。</p>
-        <div className="mof-meters"><span>活動分散 <b>{metrics.variance.toFixed(5)}</b></span><span>飽和率 <b>{(metrics.saturation * 100).toFixed(2)}%</b></span><span>生成ノート <b>{events.length}</b></span><span>音声 <b>{audioState}</b></span></div>
+        <div className="mof-meters"><span>活動分散 <b>{metrics.variance.toFixed(5)}</b></span><span>生成ノート <b>{events.length}</b></span><span>音声 <b>{audioState} · {Math.round(engineHealth.level * 100)}%</b></span><span>先読み <b>{engineHealth.queue} · {Math.round(engineHealth.batchMs)}ms · 欠落 {engineHealth.underruns}</b></span></div>
         <div className="mof-score-state">
           <div><small>HARMONY</small><strong>{musicState.harmony}</strong><span>{musicState.cellName}</span></div>
           <div><small>PHRASE</small><strong>{String(musicState.position + 1).padStart(2, "0")} / 16</strong><span>cycle {musicState.cycle + 1}</span></div>
